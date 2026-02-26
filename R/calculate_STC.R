@@ -1,18 +1,20 @@
-#' Calculate TwoDcDAPSA: PROs-Joint Contrast (PJC) Score and Quartile Groups
+#' Calculate TwoDcDAPSA: Swelling–Tenderness Contrast (STC) Score and Quartile Groups
 #'
-#' Computes PJC as a loading-weighted combination of standardized residuals
+#' Computes STC (PC2) as a loading-weighted combination of standardized residuals
 #' for Pain, Patient Global, SJC, and TJC after adjusting each for cDAPSA
-#' via a natural spline model. Includes input "tuning": coerces character
-#' columns to numeric (warning if NAs introduced) and checks for out-of-range
-#' values (SJC 0-66, TJC 0-68, Pain/Patient Global 0-10) with configurable
-#' handling. If \code{cDAPSA} is not provided, it is computed as
-#' \code{SJC + TJC + Pain + Patient_Global}. If \code{cDAPSA} is provided,
-#' it is verified against this sum (within \code{cdapsa_tolerance}); any
-#' discrepancy results in an error.
+#' via a natural spline model. STC emphasizes swelling relative to tenderness
+#' under the default PC2 loadings.
 #'
-#' The function returns both 4-level quartiles (\code{PJC_quartile}: Q1–Q4) and
-#' a 3-level grouped factor (\code{PJC_quartile_combine}) that combines Q2 and Q3
-#' (levels: \code{Q1}, \code{Q2&3}, \code{Q4}).
+#' Includes input "tuning": coerces character columns to numeric (warning if NAs introduced)
+#' and checks for out-of-range values (SJC 0-66, TJC 0-68, Pain/Patient Global 0-10)
+#' with configurable handling. If \code{cDAPSA} is not provided, it is computed as
+#' \code{SJC + TJC + Pain + Patient_Global}. If \code{cDAPSA} is provided, it is
+#' verified against this sum (within \code{cdapsa_tolerance}); any discrepancy results
+#' in an error.
+#'
+#' The function returns both 4-level quartiles (\code{STC_quartile}: Q1–Q4) and a
+#' 3-level grouped factor (\code{STC_quartile_combine}) that combines Q1 and Q4
+#' (levels: \code{Q1&4}, \code{Q2}, \code{Q3}).
 #'
 #' @param data A data.frame/tibble with the required columns.
 #' @param cohort_id Name of the cohort id column.
@@ -26,7 +28,7 @@
 #' @param TJC Name of the Tender Joint Count column (0-68).
 #' @param oob_action What to do when an input is out of its valid range
 #'   (SJC 0-66, TJC 0-68, Pain/Patient Global 0-10). One of:
-#'   \code{"stop"} (error), \code{"na"} (keep rows but set PJC/Quartile to NA),
+#'   \code{"stop"} (error), \code{"na"} (keep rows but set STC/Quartile to NA),
 #'   or \code{"drop"} (remove rows). Default is \code{"stop"}.
 #' @param cdapsa_tolerance Numeric tolerance for comparing provided cDAPSA to
 #'   the computed sum; default \code{1e-8}.
@@ -34,14 +36,14 @@
 #' @param ns_knots Numeric vector of interior knots for the spline on standardized cDAPSA.
 #' @param ns_boundary_knots Numeric vector of boundary knots for the spline on standardized cDAPSA.
 #' @param coef_list Named list of regression coefficients (intercept + 4 spline basis) for each component.
-#' @param loadings Numeric loadings (length 4) for Pain, Patient Global, SJC, TJC residuals.
-#' @param pjc_cutoffs Numeric vector of 5 cut points to define 4 quartile bins (include.lowest=TRUE).
+#' @param stc_loadings Numeric loadings (length 4) for Pain, Patient Global, SJC, TJC residuals.
+#' @param stc_cutoffs Numeric vector of 5 cut points to define 4 quartile bins (include.lowest=TRUE).
 #' @param resid_center_scale List with `center` and `scale` vectors for standardizing residuals.
 #'
-#' @return A tibble with \code{cohort_id}, \code{PJC}, \code{PJC_quartile},
-#'   and \code{PJC_quartile_combine}.
+#' @return A tibble with \code{cohort_id}, \code{STC}, \code{STC_quartile},
+#'   and \code{STC_quartile_combine}.
 #'
-#' @seealso \code{\link{calculate_STC}} for the Swelling–Tenderness Contrast (STC; PC2).
+#' @seealso \code{\link{calculate_PJC}} for the PROs-Joint Contrast (PJC; PC1).
 #'
 #' @importFrom rlang .data
 #' @export
@@ -55,7 +57,7 @@
 #'   sjc  = c(1, 3, 5),
 #'   tjc  = c(0, 2, 4)
 #' )
-#' calculate_PJC(
+#' calculate_STC(
 #'   df1,
 #'   cohort_id = "id",
 #'   cDAPSA = NULL,
@@ -68,7 +70,7 @@
 #'
 #' # Example WITH a consistent cDAPSA column (verified against the sum)
 #' df2 <- transform(df1, cdapsa = pain + pg + sjc + tjc)
-#' calculate_PJC(
+#' calculate_STC(
 #'   df2,
 #'   cohort_id = "id",
 #'   cDAPSA = "cdapsa",
@@ -77,7 +79,10 @@
 #'   SJC = "sjc",
 #'   TJC = "tjc"
 #' )
-calculate_PJC <- function(
+#'
+
+
+calculate_STC <- function(
     data,
     cohort_id = "cohort_id",
     cDAPSA = NULL,
@@ -102,8 +107,8 @@ calculate_PJC <- function(
       SJC = c(-0.76905, 0.47397, 1.95020, 4.45945, 5.98404),
       TJC = c(-0.74115, 0.27891, 2.50892, 4.68559, 6.15326)
     ),
-    loadings = c(0.5981970, 0.5960272, -0.3305720, -0.4214665),
-    pjc_cutoffs = c(-Inf, -0.79954204, 0.07402262, 0.88778526, Inf),
+    stc_loadings = c(-0.05043539, -0.01476495, 0.73876801, -0.67190780),
+    stc_cutoffs  = c(-Inf, -0.3881481, -0.1027692, 0.4411657, Inf),
     resid_center_scale = list(
       center = c(
         Pain = 1.155879e-15,
@@ -133,9 +138,9 @@ calculate_PJC <- function(
   }
 
   # -- basic validation ----------------------------------------------------
-  if (length(pjc_cutoffs) != 5L || any(!is.finite(pjc_cutoffs[2:4])) ||
-      is.unsorted(pjc_cutoffs, strictly = TRUE)) {
-    stop("`pjc_cutoffs` must be 5 strictly increasing values; outer values may be -Inf/Inf.", call. = FALSE)
+  if (length(stc_cutoffs) != 5L || any(!is.finite(stc_cutoffs[2:4])) ||
+      is.unsorted(stc_cutoffs, strictly = TRUE)) {
+    stop("`stc_cutoffs` must be 5 strictly increasing values; outer values may be -Inf/Inf.", call. = FALSE)
   }
 
   # Columns we definitely need present
@@ -183,9 +188,9 @@ calculate_PJC <- function(
     if (oob_action == "stop") {
       stop(paste(c("Out-of-range values detected:", paste0(" - ", msgs)), collapse = "\n"), call. = FALSE)
     } else if (oob_action == "na") {
-      warning(paste(c("Out-of-range values detected; PJC set to NA for affected rows:",
+      warning(paste(c("Out-of-range values detected; STC set to NA for affected rows:",
                       paste0(" - ", msgs)), collapse = "\n"), call. = FALSE)
-      # keep rows; blank out after computing PJC
+      # keep rows; blank out after computing STC
     } else if (oob_action == "drop") {
       warning(paste(c("Out-of-range rows dropped from output:",
                       paste0(" - ", msgs)), collapse = "\n"), call. = FALSE)
@@ -225,9 +230,9 @@ calculate_PJC <- function(
 
   if (nrow(dat) == 0L) {
     out <- dat[, cohort_id, drop = FALSE]
-    out$PJC <- numeric(0)
-    out$PJC_quartile <- factor(character(0), levels = c("Q1","Q2","Q3","Q4"))
-    out$PJC_quartile_combine <- factor(character(0), levels = c("Q1","Q2&3","Q4"))
+    out$STC <- numeric(0)
+    out$STC_quartile <- factor(character(0), levels = c("Q1","Q2","Q3","Q4"))
+    out$STC_quartile_combine <- factor(character(0), levels = c("Q1&4","Q2","Q3"))
     return(out)
   }
 
@@ -274,30 +279,30 @@ calculate_PJC <- function(
     TJC_resid_std  = ( .data$TJC_resid  - resid_center_scale$center["Tender Joint Count"])  / resid_center_scale$scale["Tender Joint Count"]
   )
 
-  # -- Step 6: PJC + quartiles + combined quartiles -----------------------
+  # -- Step 6: STC + quartiles + combined quartiles -----------------------
   dat <- dplyr::mutate(
     dat,
-    PJC = .data$Pain_resid_std * loadings[1] +
-      .data$Patient_Global_resid_std * loadings[2] +
-      .data$SJC_resid_std * loadings[3] +
-      .data$TJC_resid_std * loadings[4],
-    PJC_quartile = cut(.data$PJC, breaks = pjc_cutoffs, include.lowest = TRUE, labels = c("Q1","Q2","Q3","Q4")),
-    PJC_quartile_combine = dplyr::case_when(
-      is.na(.data$PJC_quartile)              ~ NA_character_,
-      .data$PJC_quartile %in% c("Q2","Q3")   ~ "Q2&3",
-      TRUE                                   ~ as.character(.data$PJC_quartile)
+    STC = .data$Pain_resid_std * stc_loadings[1] +
+      .data$Patient_Global_resid_std * stc_loadings[2] +
+      .data$SJC_resid_std * stc_loadings[3] +
+      .data$TJC_resid_std * stc_loadings[4],
+    STC_quartile = cut(.data$STC, breaks = stc_cutoffs, include.lowest = TRUE, labels = c("Q1","Q2","Q3","Q4")),
+    STC_quartile_combine = dplyr::case_when(
+      is.na(.data$STC_quartile)              ~ NA_character_,
+      .data$STC_quartile %in% c("Q1","Q4")   ~ "Q1&4",
+      TRUE                                   ~ as.character(.data$STC_quartile)
     ),
-    PJC_quartile_combine = factor(.data$PJC_quartile_combine, levels = c("Q1","Q2&3","Q4"))
+    STC_quartile_combine = factor(.data$STC_quartile_combine, levels = c("Q1&4","Q2","Q3"))
   )
 
-  # -- blank out PJC for OOB rows if requested ----------------------------
+  # -- blank out STC for OOB rows if requested ----------------------------
   if (oob_action == "na" && any(oob_mask)) {
-    dat$PJC[oob_mask] <- NA_real_
-    dat$PJC_quartile[oob_mask] <- NA
-    dat$PJC_quartile_combine[oob_mask] <- NA
+    dat$STC[oob_mask] <- NA_real_
+    dat$STC_quartile[oob_mask] <- NA
+    dat$STC_quartile_combine[oob_mask] <- NA
   }
 
-  dplyr::select(dat, dplyr::all_of(c(cohort_id, "PJC", "PJC_quartile", "PJC_quartile_combine")))
+  dplyr::select(dat, dplyr::all_of(c(cohort_id, "STC", "STC_quartile", "STC_quartile_combine")))
 }
 
 
